@@ -20,6 +20,12 @@ pub struct Fp2Elem<T> {
     pub elem2: T,
 }
 
+impl<T> Fp2Elem<T> {
+    pub fn new(elem1: T, elem2: T) -> Fp2Elem<T> {
+        Fp2Elem{elem1, elem2}
+    }
+}
+
 impl<T> fmt::Debug for Fp2Elem<T>
 where
     T: fmt::Debug,

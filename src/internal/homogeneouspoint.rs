@@ -11,6 +11,7 @@ use num_traits::Inv;
 use num_traits::Pow;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub, SubAssign};
 use std::option::Option;
+use gridiron::fp_256::Fp256;
 
 quick_error! {
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -254,14 +255,25 @@ where
     }
 }
 
+use internal::field::CurveCoefficient;
 impl<T> HomogeneousPoint<T>
 where
-    T: Field,
+    T: Field //+ CurveCoefficient<T>,
 {
+    // using formulas from:
+    //   J. Renes, C. Castello, and L. Batina,
+    //   "Complete addition formulas for prime order elliptic curves",
+    //   https://eprint.iacr.org/2015/1060
+    // (For y^2=x^3+b, doubling formulas, page 12.)
+    // Mind that the main curve uses b = 3, but the twisted curve uses
+    // b = 3/(u+3). The code below _assumes_ that the twisted curve is used
+    // when the base field is FP2Elem (this is quite ugly).
+    //
+    // Since the formulas are complete, there is no need for make a special for zero.
     pub fn double(&self) -> HomogeneousPoint<T> {
         match *self {
-            ref p if p.is_zero() => Zero::zero(),
-            HomogeneousPoint { y, .. } if y == zero() => zero(),
+            ref p if p.is_zero() => Zero::zero(), // can't check for 0
+            HomogeneousPoint { y, .. } if y == zero() => zero(), // can't check for 0
             HomogeneousPoint { x, y, z } => {
                 let x_cubed = x.pow(3);
                 let y_squared = y.pow(2);
@@ -281,6 +293,59 @@ where
             }
         }
     }
+
+    pub fn double_fp256(hpoint_fp256: HomogeneousPoint<Fp256>) -> HomogeneousPoint<Fp256> {
+//        let xi = Fp2Elem::new(Fp256::from(1u8), Fp256::from(3u8));
+//        let twisted_curve_const_coeff = xi.inv() * 3u64;
+//        let three_b_twisted: Fp2Elem<Fp256> = twisted_curve_const_coeff * 3u64;
+        let x = hpoint_fp256.x;
+        let y = hpoint_fp256.y;
+        let z = hpoint_fp256.z;
+
+        let y_squared = y.pow(2);
+        let z_squared = z.pow(2);
+        let three_b_times_z_squared =  z_squared * 9u64;
+        let eight_times_y_squared = y_squared * 8u64; // 8Y^2
+        let m1 = y_squared - (three_b_times_z_squared * 3u64); // Y^2 - 9bZ^2
+        let m2 = y_squared + three_b_times_z_squared; // Y^2 + 3bZ^2
+        let x3 = x * y * m1 * 2u64;
+        let y3 = m1 * m2 + three_b_times_z_squared * eight_times_y_squared;
+        let z3 = eight_times_y_squared * y * z;
+        HomogeneousPoint { x: x3, y: y3, z: z3}
+//        HomogeneousPoint[A](x3, y3, z3)
+//        unimplemented!()
+    }
+
+    pub fn double_fp2(hpoint_fp2: HomogeneousPoint<Fp2Elem<Fp256>>) -> HomogeneousPoint<Fp2Elem<Fp256>> {
+        let xi = Fp2Elem::new(Fp256::from(1u8), Fp256::from(3u8));
+        let twisted_curve_const_coeff = xi.inv() * 3u64;
+        let three_b_twisted: Fp2Elem<Fp256> = twisted_curve_const_coeff * 3u64;
+        let x = hpoint_fp2.x;
+        let y = hpoint_fp2.y;
+        let z = hpoint_fp2.z;
+
+        let y_squared = y.pow(2);
+        let z_squared = z.pow(2);
+        let three_b_times_z_squared =  three_b_twisted * z_squared;
+        let eight_times_y_squared = y_squared * 8u64; // 8Y^2
+        let m1 = y_squared - (three_b_times_z_squared * 3u64); // Y^2 - 9bZ^2
+        let m2 = y_squared + three_b_times_z_squared; // Y^2 + 3bZ^2
+        let x3 = x * y * m1 * 2u64;
+        let y3 = m1 * m2 + three_b_times_z_squared * eight_times_y_squared;
+        let z3 = eight_times_y_squared * y * z;
+        HomogeneousPoint { x: x3, y: y3, z: z3}
+    }
+
+//    pub fn d(hpoint: Hpoint) -> Hpoint {
+//        match hpoint {
+//            Hpoint::Hpoint256(HomogeneousPoint { x, y, z }) => {
+//
+//                unimplemented!()
+//            },
+//            Hpoint::HpointFp2(HomogeneousPoint { x, y, z }) => unimplemented!(),
+//        }
+//        unimplemented!()
+//    }
 
     ///Add self `multiple` times, where `multiple` is represented by the A, which must be able to be converted into a NAF.
     pub fn times<A: BitRepr>(&self, multiple: &A) -> HomogeneousPoint<T> {
@@ -370,6 +435,33 @@ pub mod test {
     }
 
     #[test]
+    fn double_zero_is_zero() {
+        use internal::fp12elem::Fp12Elem;
+        let zero_fp256 = HomogeneousPoint {
+            x: Fp256::zero(),
+            y: Fp256::zero(),
+            z: Fp256::zero(),
+        };
+        let double = zero_fp256.double();
+        assert_eq!(zero_fp256, double);
+
+        let zero_fp2: HomogeneousPoint<Fp2Elem<Fp256>> = HomogeneousPoint {
+            x: Fp2Elem::zero(),
+            y: Fp2Elem::zero(),
+            z: Fp2Elem::zero(),
+        };
+        assert_eq!(zero_fp2, zero_fp2.double());
+
+        // we don't ever make these, but the test should still hold
+        let zero_fp12: HomogeneousPoint<Fp12Elem<Fp256>> = HomogeneousPoint {
+            x: Fp12Elem::zero(),
+            y: Fp12Elem::zero(),
+            z: Fp12Elem::zero(),
+        };
+        assert_eq!(zero_fp12, zero_fp12.double())
+    }
+
+    #[test]
     fn point_minus_self_is_zero() {
         assert_eq!(
             FP_256_CURVE_POINTS.generator - FP_256_CURVE_POINTS.generator,
@@ -437,6 +529,19 @@ pub mod test {
             let hpoint = HomogeneousPoint::<Fp2Elem<Fp256>>::decode(hashed_value_bytes).unwrap();
 
             assert_eq!(arb_hpoint, hpoint)
+        }
+
+        #[test]
+        fn double_is_mul_2_fp256(arb_hpoint in arb_homogeneous()) {
+            prop_assert_eq!(arb_hpoint.double(), arb_hpoint * Fp256::from(2u8));
+            prop_assert_eq!(HomogeneousPoint::<Fp256>::double_fp256(arb_hpoint), arb_hpoint * Fp256::from(2u8))
+
+        }
+
+         #[test]
+        fn double_is_mul_2_fp2(arb_hpoint_fp2 in arb_homogeneous_fp2()) {
+            prop_assert_eq!(arb_hpoint_fp2.double(), arb_hpoint_fp2 * Fp256::from(2u8));
+            prop_assert_eq!(HomogeneousPoint::<Fp2Elem<Fp256>>::double_fp2(arb_hpoint_fp2), arb_hpoint_fp2 * Fp256::from(2u8))
         }
     }
 

@@ -190,6 +190,21 @@ impl ExtensionField for Fp256 {
     }
 }
 
+pub trait CurveCoefficient<T> {
+    fn curve_coeff() -> T;
+}
+
+impl CurveCoefficient<Fp256> for Fp256 {
+    fn curve_coeff() -> Fp256 {
+        unimplemented!()
+    }
+}
+
+impl CurveCoefficient<Fp2Elem<Fp256>> for Fp2Elem<Fp256> {
+    fn curve_coeff() -> Fp2Elem<Fp256> {
+        unimplemented!()
+    }
+}
 /*
 //Additive laws permit all elements.
   implicit def pred[A]: Predicate[A] = Predicate.const(true)
