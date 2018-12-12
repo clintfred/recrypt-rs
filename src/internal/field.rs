@@ -21,6 +21,7 @@ pub trait Field:
     + Inv<Output = Self>
     + Pow<u64, Output = Self>
     + Sub<Output = Self>
+    + CurveCoefficient
 {
     fn prop_semigroup(a: Self, b: Self, c: Self) -> bool {
         a + (b + c) == (a + b) + c
@@ -190,18 +191,39 @@ impl ExtensionField for Fp256 {
     }
 }
 
-pub trait CurveCoefficient<T> {
-    fn curve_coeff() -> T;
+pub trait CurveCoefficient {
+    fn curve_coeff() -> Self;
 }
 
-impl CurveCoefficient<Fp256> for Fp256 {
+impl CurveCoefficient for Fp256 {
     fn curve_coeff() -> Fp256 {
+        Fp256::from(3u8)
+    }
+}
+
+impl <T: Field> CurveCoefficient for Fp2Elem<T> {
+    fn curve_coeff() -> Fp2Elem<T> {
+        let xi = Fp2Elem::new(T::one(), T::one() * 3);
+        xi.inv() * 3
+
+    }
+}
+
+impl CurveCoefficient for Fr256 {
+    fn curve_coeff() -> Fr256 {
+        Fr256::from(3u8)
+    }
+}
+
+impl<T: Field> CurveCoefficient for Fp6Elem<T> {
+    fn curve_coeff() -> Fp6Elem<T> {
         unimplemented!()
     }
 }
 
-impl CurveCoefficient<Fp2Elem<Fp256>> for Fp2Elem<Fp256> {
-    fn curve_coeff() -> Fp2Elem<Fp256> {
+use internal::fp12elem::Fp12Elem;
+impl <T: Field> CurveCoefficient for Fp12Elem<T> {
+    fn curve_coeff() -> Fp12Elem<T> {
         unimplemented!()
     }
 }
